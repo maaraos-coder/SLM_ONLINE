@@ -1,13 +1,15 @@
 let ctx,analyser,stream,source,running=false,paused=false,startTime=0,pausedAt=0,last=0;
 let weighting='A', view='fft', min=Infinity,max=-Infinity,energy=0,energyTime=0,history=[];
+let sessionStartedAt=null;
 const $=id=>document.getElementById(id); const canv=$('spectrum'), hist=$('history');
 function resize(c){c.width=c.clientWidth*devicePixelRatio;c.height=c.clientHeight*devicePixelRatio}
 function weight(f,w){if(w==='Z')return 0; let f2=f*f;if(w==='A'){let ra=(12200**2*f2*f2)/((f2+20.6**2)*Math.sqrt((f2+107.7**2)*(f2+737.9**2))*(f2+12200**2));return 20*Math.log10(ra)+2;}let rc=(12200**2*f2)/((f2+20.6**2)*(f2+12200**2));return 20*Math.log10(rc)+.06}
 function label(){let p=weighting;let r=$('response').value==='1'?'SLOW':'FAST'; $('unit').textContent=`dB(${p})`; $('instLabel').textContent=`L${p}${$('response').value==='1'?'S':'F'}`;$('leqLabel').textContent=`L${p}eq,T`;$('maxLabel').textContent=`L${p}max`;$('minLabel').textContent=`L${p}min`;$('histLegend').textContent=`dB(${p})`;if($('mobileWeight'))$('mobileWeight').textContent=p;if($('mobileResponse'))$('mobileResponse').textContent=r}
 document.querySelectorAll('.mode button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.mode button').forEach(x=>x.classList.remove('active'));b.classList.add('active');weighting=b.dataset.w;label();resetStats()});document.querySelectorAll('.view').forEach(b=>b.onclick=()=>{document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));b.classList.add('active');view=b.dataset.view});$('response').onchange=label;
-async function start(){if(!ctx){stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});ctx=new AudioContext();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=8192;analyser.smoothingTimeConstant=0;source.connect(analyser)}await ctx.resume();if(!running){startTime=performance.now();last=startTime;running=true}paused=false;$('status').textContent='● MIDIENDO';$('status').style.color='#d6f23d';requestAnimationFrame(loop)}
+async function start(){if(!ctx){stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});ctx=new AudioContext();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=8192;analyser.smoothingTimeConstant=0;source.connect(analyser)}await ctx.resume();if(!running){startTime=performance.now();last=startTime;running=true;sessionStartedAt=new Date()}paused=false;$('status').textContent='● MIDIENDO';$('status').style.color='#d6f23d';requestAnimationFrame(loop)}
 function resetStats(){min=Infinity;max=-Infinity;energy=0;energyTime=0;history=[];startTime=performance.now();last=startTime;$('min').textContent=$('max').textContent=$('leq').textContent='--.-'}
-$('start').onclick=()=>start().catch(e=>alert('No fue posible acceder al micrófono. Use HTTPS y autorice el permiso.\n'+e.message));$('pause').onclick=()=>{paused=!paused;$('status').textContent=paused?'● PAUSADO':'● MIDIENDO';if(!paused){last=performance.now();requestAnimationFrame(loop)}};$('reset').onclick=resetStats;
+$('start').onclick=()=>start().catch(e=>alert('No fue posible acceder al micrófono. Use HTTPS y autorice el permiso.\n'+e.message));$('pause').onclick=()=>{if(!running)return;paused=!paused;$('status').textContent=paused?'● PAUSADO':'● MIDIENDO';if(!paused){last=performance.now();requestAnimationFrame(loop)}};$('reset').onclick=()=>{resetStats();sessionStartedAt=running?new Date():null};
+$('finish').onclick=finishAndSave;
 function spectrumLevels(){let arr=new Float32Array(analyser.frequencyBinCount);analyser.getFloatFrequencyData(arr);let sr=ctx.sampleRate, bin=sr/analyser.fftSize, off=+$('offset').value;return {arr,sr,bin,off}}
 function overall(s){let sum=0,n=0;for(let i=1;i<s.arr.length;i++){let f=i*s.bin;if(f<20||f>20000)continue;let db=s.arr[i]+s.off+weight(f,weighting);sum+=10**(db/10);n++}return n?10*Math.log10(sum):0}
 function loop(now){if(!running||paused)return;let s=spectrumLevels(), val=overall(s), dt=Math.min((now-last)/1000,.25);last=now;let tau=+$('response').value;if(!loop.sm)loop.sm=val;let a=1-Math.exp(-dt/tau);loop.sm+=a*(val-loop.sm);let v=loop.sm;if(Number.isFinite(v)){min=Math.min(min,v);max=Math.max(max,v);energy+=10**(v/10)*dt;energyTime+=dt;let leq=10*Math.log10(energy/energyTime);$('big').textContent=$('inst').textContent=v.toFixed(1);$('leq').textContent=leq.toFixed(1);$('max').textContent=max.toFixed(1);$('min').textContent=min.toFixed(1);$('bar').style.width=Math.max(0,Math.min(100,(v-20)/110*100))+'%';history.push(v);if(history.length>900)history.shift();let sec=(performance.now()-startTime)/1000;$('elapsed').textContent=new Date(sec*1000).toISOString().slice(11,19)}drawHistory();drawSpectrum(s);requestAnimationFrame(loop)}
@@ -16,3 +18,25 @@ const oct=[31.5,63,125,250,500,1000,2000,4000,8000,16000];const third=[25,31.5,4
 function bandLevel(s,fc,frac){let r=2**(1/(2*frac)),lo=fc/r,hi=fc*r,sum=0,n=0;for(let i=Math.max(1,Math.floor(lo/s.bin));i<Math.min(s.arr.length,Math.ceil(hi/s.bin));i++){let f=i*s.bin,db=s.arr[i]+s.off+weight(f,weighting);sum+=10**(db/10);n++}return n?10*Math.log10(sum):20}
 function drawSpectrum(s){resize(canv);let g=canv.getContext('2d'),w=canv.width,h=canv.height;g.clearRect(0,0,w,h);if(view==='fft'){g.strokeStyle='#d6f23d';g.lineWidth=1.5*devicePixelRatio;g.beginPath();let started=false;for(let i=1;i<s.arr.length;i++){let f=i*s.bin;if(f<20||f>20000)continue;let x=(Math.log10(f)-Math.log10(20))/(Math.log10(20000)-Math.log10(20))*w,db=s.arr[i]+s.off+weight(f,weighting),y=h-(Math.max(20,Math.min(130,db))-20)/110*h;started?g.lineTo(x,y):g.moveTo(x,y);started=true}g.stroke();$('bands').innerHTML=''}else{let list=view==='oct'?oct:third,frac=view==='oct'?1:3;$('bands').innerHTML=list.map(fc=>{let db=bandLevel(s,fc,frac),ht=Math.max(1,Math.min(100,(db-20)/110*100));return `<div class="band"><i style="height:${ht*1.6}px"></i>${fc>=1000?(fc/1000)+'k':fc}</div>`}).join('')}}
 label();resize(hist);resize(canv);
+
+
+function storedSessions(){try{return JSON.parse(localStorage.getItem('slm_sessions_v1')||'[]')}catch{return []}}
+function saveSessions(items){localStorage.setItem('slm_sessions_v1',JSON.stringify(items))}
+function fmtDate(iso){return new Intl.DateTimeFormat('es-CL',{dateStyle:'short',timeStyle:'medium'}).format(new Date(iso))}
+function fmtDuration(sec){sec=Math.max(0,Math.round(sec));let h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),ss=sec%60;return [h,m,ss].map(x=>String(x).padStart(2,'0')).join(':')}
+function finishAndSave(){
+  if(!running||!energyTime||!Number.isFinite(min)||!Number.isFinite(max)){alert('Primero inicia una medición válida.');return}
+  const leq=10*Math.log10(energy/energyTime), ended=new Date();
+  const item={id:Date.now(),startedAt:(sessionStartedAt||ended).toISOString(),endedAt:ended.toISOString(),duration:energyTime,weighting,response:$('response').value==='1'?'SLOW':'FAST',leq:+leq.toFixed(1),max:+max.toFixed(1),min:+min.toFixed(1)};
+  const items=storedSessions();items.unshift(item);saveSessions(items.slice(0,100));
+  running=false;paused=false;$('status').textContent='● GUARDADO';$('status').style.color='#7bd7a6';renderSessions();
+}
+function deleteSession(id){saveSessions(storedSessions().filter(x=>x.id!==id));renderSessions()}
+function renderSessions(){
+  const items=storedSessions(), list=$('sessionList'), empty=$('noSessions');if(!list)return;
+  empty.style.display=items.length?'none':'block';
+  list.innerHTML=items.map(x=>{let p=x.weighting;return `<article class="session"><div class="session-head"><div><b>${fmtDate(x.startedAt)}</b><span>${fmtDuration(x.duration)} · ${p} · ${x.response}</span></div><button class="delete-session" data-id="${x.id}" aria-label="Eliminar medición">Eliminar</button></div><div class="session-values"><div><strong>${x.leq.toFixed(1)}</strong><span>L${p}eq,T · dB(${p})</span></div><div><strong>${x.max.toFixed(1)}</strong><span>L${p}max · dB(${p})</span></div><div><strong>${x.min.toFixed(1)}</strong><span>L${p}min · dB(${p})</span></div></div></article>`}).join('');
+  list.querySelectorAll('.delete-session').forEach(b=>b.onclick=()=>deleteSession(+b.dataset.id));
+}
+$('clearSessions').onclick=()=>{if(storedSessions().length&&confirm('¿Borrar todas las mediciones guardadas en este dispositivo?')){saveSessions([]);renderSessions()}};
+renderSessions();

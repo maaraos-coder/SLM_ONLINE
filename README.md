@@ -1,4 +1,4 @@
-# Sonómetro Online · Diplomado de Ingeniería Acústica
+# Sonómetro Online · Diplomado en Acústica de la edificación
 
 Aplicación web educativa para medición acústica desde el micrófono del navegador.
 
