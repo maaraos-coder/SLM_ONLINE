@@ -1,6 +1,8 @@
 let ctx,analyser,stream,source,track,processor,silentGain,running=false,paused=false,startTime=0,last=0;
 let weighting='A', view='fft',energy=0,energyTime=0,history=[];
-let warmupUntil=0, fastE=undefined, slowE=undefined;
+let fastE=undefined, slowE=undefined;
+let measurementReady=false, stabilizationElapsed=0;
+const STABILIZATION_SEC=2.0;
 let minFast=Infinity,maxFast=-Infinity,minSlow=Infinity,maxSlow=-Infinity;
 let latestLevel=NaN, latestRawLevel=NaN;
 let clipSamples=0,totalSamples=0,lastClipAt=0;
@@ -32,25 +34,45 @@ let filters={A:null,C:null};
 function makeCascade(kind,fs){const bank=Math.abs(fs-44100)<Math.abs(fs-48000)?44100:48000;const coeffs=[...SOS[bank][kind],HF_CORR[bank]];return coeffs.map(c=>({b0:c[0],b1:c[1],b2:c[2],a1:c[4],a2:c[5],z1:0,z2:0}))}
 function runCascade(x,sections){let y=x;for(const s of sections){const o=s.b0*y+s.z1;s.z1=s.b1*y-s.a1*o+s.z2;s.z2=s.b2*y-s.a2*o;y=o}return y}
 function processAudio(ev){if(!running||paused)return;const input=ev.inputBuffer.getChannelData(0);let sumA=0,sumC=0,sumZ=0,blockClip=0;for(let i=0;i<input.length;i++){const x=input[i];if(Math.abs(x)>=0.995)blockClip++;const a=runCascade(x,filters.A),c=runCascade(x,filters.C);sumA+=a*a;sumC+=c*c;sumZ+=x*x}const n=input.length;if(!n)return;clipSamples+=blockClip;totalSamples+=n;if(blockClip>0)lastClipAt=performance.now();const mean={A:sumA/n,C:sumC/n,Z:sumZ/n}[weighting];if(!(mean>0))return;const rawDb=10*Math.log10(mean);const off=currentOffset();const eCal=mean*Math.pow(10,off/10);latestRawLevel=rawDb;latestLevel=10*Math.log10(eCal);
-  const dt=n/ctx.sampleRate, now=performance.now();
+  const dt=n/ctx.sampleRate;
   // FAST/SLOW se integran en energía (p²), no promediando dB.
   const af=1-Math.exp(-dt/0.125), as=1-Math.exp(-dt/1.0);
   if(!(fastE>0))fastE=eCal; else fastE+=af*(eCal-fastE);
   if(!(slowE>0))slowE=eCal; else slowE+=as*(eCal-slowE);
   if(calibrationSampling&&Number.isFinite(rawDb))calibrationSamples.push(rawDb);
-  if(now>=warmupUntil){
-    energy+=eCal*dt; energyTime+=dt;
-    const lf=10*Math.log10(fastE), ls=10*Math.log10(slowE);
-    minFast=Math.min(minFast,lf);maxFast=Math.max(maxFast,lf);minSlow=Math.min(minSlow,ls);maxSlow=Math.max(maxSlow,ls);
+
+  // Estabilización inicial del micrófono: durante 2 s se muestra el nivel,
+  // pero NO se integra Leq ni se retienen máximos/mínimos. Esto evita que
+  // el transitorio de apertura/AGC del navegador contamine sobre todo Lmin.
+  if(!measurementReady){
+    stabilizationElapsed+=dt;
+    if(stabilizationElapsed<STABILIZATION_SEC)return;
+
+    // En el instante real de inicio se reinician los detectores con la
+    // energía ya estabilizada y desde aquí comienzan T, Leq, Max y Min.
+    fastE=eCal;
+    slowE=eCal;
+    const l0=10*Math.log10(eCal);
+    minFast=maxFast=minSlow=maxSlow=l0;
+    energy=0;
+    energyTime=0;
+    measurementReady=true;
+    sessionStartedAt=new Date();
+    if($('status')){$('status').textContent='● MIDIENDO';$('status').style.color='#d6f23d'}
   }
+
+  energy+=eCal*dt;
+  energyTime+=dt;
+  const lf=10*Math.log10(fastE), ls=10*Math.log10(slowE);
+  minFast=Math.min(minFast,lf);maxFast=Math.max(maxFast,lf);minSlow=Math.min(minSlow,ls);maxSlow=Math.max(maxSlow,ls);
 }
 async function start(){if(!ctx){const requested={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1};stream=await navigator.mediaDevices.getUserMedia({audio:requested,video:false});track=stream.getAudioTracks()[0];ctx=new (window.AudioContext||window.webkitAudioContext)();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=8192;analyser.smoothingTimeConstant=0;source.connect(analyser);filters.A=makeCascade('A',ctx.sampleRate);filters.C=makeCascade('C',ctx.sampleRate);
     // ScriptProcessor se usa para mantener compatibilidad amplia (incluido Safari/iOS).
     // El procesamiento es temporal; el analyser queda solo para visualización espectral.
     processor=ctx.createScriptProcessor(1024,1,1);silentGain=ctx.createGain();silentGain.gain.value=0;source.connect(processor);processor.connect(silentGain);silentGain.connect(ctx.destination);processor.onaudioprocess=processAudio;renderMicInfo()}
-  await ctx.resume();if(!running){startTime=performance.now();last=startTime;running=true;sessionStartedAt=new Date();resetStats(false)}paused=false;$('status').textContent='● MIDIENDO';$('status').style.color='#d6f23d';requestAnimationFrame(loop)}
-function resetStats(resetClock=true){energy=0;energyTime=0;history=[];fastE=undefined;slowE=undefined;minFast=Infinity;maxFast=-Infinity;minSlow=Infinity;maxSlow=-Infinity;latestLevel=NaN;latestRawLevel=NaN;clipSamples=0;totalSamples=0;lastClipAt=0;warmupUntil=performance.now()+500;if(resetClock){startTime=performance.now();last=startTime;sessionStartedAt=running?new Date():null}$('min').textContent=$('max').textContent=$('leq').textContent='--.-';$('elapsed').textContent='00:00:00'}
-$('start').onclick=()=>start().catch(e=>alert('No fue posible acceder al micrófono. Use HTTPS y autorice el permiso.\n'+e.message));$('pause').onclick=()=>{if(!running)return;paused=!paused;$('status').textContent=paused?'● PAUSADO':'● MIDIENDO';if(!paused){last=performance.now();requestAnimationFrame(loop)}};if($('stop'))$('stop').onclick=stopMeasurement;$('reset').onclick=()=>resetStats(true);if($('finish'))$('finish').onclick=finishAndSave;
+  await ctx.resume();if(!running){startTime=performance.now();last=startTime;running=true;resetStats(false)}paused=false;$('status').textContent=measurementReady?'● MIDIENDO':'● PREPARANDO';$('status').style.color=measurementReady?'#d6f23d':'#f3c969';requestAnimationFrame(loop)}
+function resetStats(resetClock=true){energy=0;energyTime=0;history=[];fastE=undefined;slowE=undefined;measurementReady=false;stabilizationElapsed=0;minFast=Infinity;maxFast=-Infinity;minSlow=Infinity;maxSlow=-Infinity;latestLevel=NaN;latestRawLevel=NaN;clipSamples=0;totalSamples=0;lastClipAt=0;if(resetClock){startTime=performance.now();last=startTime}sessionStartedAt=null;$('min').textContent=$('max').textContent=$('leq').textContent='--.-';$('elapsed').textContent='00:00:00';if(running&&$('status')){$('status').textContent='● PREPARANDO';$('status').style.color='#f3c969'}}
+$('start').onclick=()=>start().catch(e=>alert('No fue posible acceder al micrófono. Use HTTPS y autorice el permiso.\n'+e.message));$('pause').onclick=()=>{if(!running)return;paused=!paused;$('status').textContent=paused?'● PAUSADO':(measurementReady?'● MIDIENDO':'● PREPARANDO');$('status').style.color=paused?'#9fb4bd':(measurementReady?'#d6f23d':'#f3c969');if(!paused){last=performance.now();requestAnimationFrame(loop)}};if($('stop'))$('stop').onclick=stopMeasurement;$('reset').onclick=()=>resetStats(true);if($('finish'))$('finish').onclick=finishAndSave;
 
 function stopMeasurement(){
   if(!running)return;
@@ -65,9 +87,9 @@ function stopMeasurement(){
 
 
 function spectrumLevels(offset=currentOffset()){let arr=new Float32Array(analyser.frequencyBinCount);analyser.getFloatFrequencyData(arr);let sr=ctx.sampleRate, bin=sr/analyser.fftSize;return {arr,sr,bin,off:offset}}
-function updateInputStatus(){const el=$('inputStatus');if(!el)return;if(!ctx){el.textContent='Entrada: esperando micrófono';el.className='input-status';return}const ratio=totalSamples?clipSamples/totalSamples:0;const recent=lastClipAt&&performance.now()-lastClipAt<2000;if(recent||ratio>0.0005){el.textContent='Entrada: SATURACIÓN detectada';el.className='input-status clip'}else if(totalSamples>ctx.sampleRate){el.textContent='Entrada: nivel válido';el.className='input-status ok'}else{el.textContent='Entrada: verificando…';el.className='input-status warn'}}
+function updateInputStatus(){const el=$('inputStatus');if(!el)return;if(!ctx){el.textContent='Entrada: esperando micrófono';el.className='input-status';return}if(running&&!measurementReady){const left=Math.max(0,STABILIZATION_SEC-stabilizationElapsed);el.textContent=`Estabilizando micrófono… ${left.toFixed(1)} s`;el.className='input-status warn';return}const ratio=totalSamples?clipSamples/totalSamples:0;const recent=lastClipAt&&performance.now()-lastClipAt<2000;if(recent||ratio>0.0005){el.textContent='Entrada: SATURACIÓN detectada';el.className='input-status clip'}else if(totalSamples>ctx.sampleRate){el.textContent='Entrada: nivel válido';el.className='input-status ok'}else{el.textContent='Entrada: verificando…';el.className='input-status warn'}}
 function updateDisplayedStats(){const useSlow=$('response').value==='1';const e=useSlow?slowE:fastE;const v=e>0?10*Math.log10(e):NaN;const mn=useSlow?minSlow:minFast,mx=useSlow?maxSlow:maxFast;const leq=energyTime>0?10*Math.log10(energy/energyTime):NaN;if(Number.isFinite(v)){$('big').textContent=$('inst').textContent=v.toFixed(1);$('bar').style.width=Math.max(0,Math.min(100,(v-20)/110*100))+'%'}$('leq').textContent=Number.isFinite(leq)?leq.toFixed(1):'--.-';$('max').textContent=Number.isFinite(mx)?mx.toFixed(1):'--.-';$('min').textContent=Number.isFinite(mn)?mn.toFixed(1):'--.-'}
-function loop(now){if(!running||paused)return;updateDisplayedStats();updateInputStatus();const useSlow=$('response').value==='1',e=useSlow?slowE:fastE,v=e>0?10*Math.log10(e):NaN;if(Number.isFinite(v)){history.push(v);if(history.length>900)history.shift()}const sec=energyTime;$('elapsed').textContent=new Date(sec*1000).toISOString().slice(11,19);drawHistory();if(analyser)drawSpectrum(spectrumLevels());requestAnimationFrame(loop)}
+function loop(now){if(!running||paused)return;updateDisplayedStats();updateInputStatus();const useSlow=$('response').value==='1',e=useSlow?slowE:fastE,v=e>0?10*Math.log10(e):NaN;if(measurementReady&&Number.isFinite(v)){history.push(v);if(history.length>900)history.shift()}const sec=energyTime;$('elapsed').textContent=new Date(sec*1000).toISOString().slice(11,19);drawHistory();if(analyser)drawSpectrum(spectrumLevels());requestAnimationFrame(loop)}
 function drawHistory(){resize(hist);let g=hist.getContext('2d'),w=hist.width,h=hist.height;g.clearRect(0,0,w,h);g.strokeStyle='#1c3440';g.lineWidth=1;for(let y=0;y<=5;y++){g.beginPath();g.moveTo(0,y*h/5);g.lineTo(w,y*h/5);g.stroke()}if(history.length<2)return;g.strokeStyle='#d6f23d';g.lineWidth=2*devicePixelRatio;g.beginPath();history.forEach((v,i)=>{let x=i/(history.length-1)*w,y=h-(Math.max(20,Math.min(130,v))-20)/110*h;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}
 const oct=[31.5,63,125,250,500,1000,2000,4000,8000,16000];const third=[25,31.5,40,50,63,80,100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500,16000];
 function bandLevel(s,fc,frac){
