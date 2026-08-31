@@ -43,7 +43,18 @@ async function start(){if(!ctx){const requested={echoCancellation:false,noiseSup
     processor=ctx.createScriptProcessor(1024,1,1);silentGain=ctx.createGain();silentGain.gain.value=0;source.connect(processor);processor.connect(silentGain);silentGain.connect(ctx.destination);processor.onaudioprocess=processAudio;renderMicInfo()}
   await ctx.resume();if(!running){startTime=performance.now();last=startTime;running=true;sessionStartedAt=new Date();resetStats(false)}paused=false;$('status').textContent='● MIDIENDO';$('status').style.color='#d6f23d';requestAnimationFrame(loop)}
 function resetStats(resetClock=true){energy=0;energyTime=0;history=[];fastE=undefined;slowE=undefined;minFast=Infinity;maxFast=-Infinity;minSlow=Infinity;maxSlow=-Infinity;latestLevel=NaN;latestRawLevel=NaN;warmupUntil=performance.now()+500;if(resetClock){startTime=performance.now();last=startTime;sessionStartedAt=running?new Date():null}$('min').textContent=$('max').textContent=$('leq').textContent='--.-';$('elapsed').textContent='00:00:00'}
-$('start').onclick=()=>start().catch(e=>alert('No fue posible acceder al micrófono. Use HTTPS y autorice el permiso.\n'+e.message));$('pause').onclick=()=>{if(!running)return;paused=!paused;$('status').textContent=paused?'● PAUSADO':'● MIDIENDO';if(!paused){last=performance.now();requestAnimationFrame(loop)}};$('reset').onclick=()=>resetStats(true);if($('finish'))$('finish').onclick=finishAndSave;
+$('start').onclick=()=>start().catch(e=>alert('No fue posible acceder al micrófono. Use HTTPS y autorice el permiso.\n'+e.message));$('pause').onclick=()=>{if(!running)return;paused=!paused;$('status').textContent=paused?'● PAUSADO':'● MIDIENDO';if(!paused){last=performance.now();requestAnimationFrame(loop)}};if($('stop'))$('stop').onclick=stopMeasurement;$('reset').onclick=()=>resetStats(true);if($('finish'))$('finish').onclick=finishAndSave;
+
+function stopMeasurement(){
+  if(!running)return;
+  running=false;
+  paused=false;
+  updateDisplayedStats();
+  $('status').textContent='● DETENIDO';
+  $('status').style.color='#9fb4bd';
+  if($('pause'))$('pause').textContent='Pausar';
+}
+
 function spectrumLevels(offset=currentOffset()){let arr=new Float32Array(analyser.frequencyBinCount);analyser.getFloatFrequencyData(arr);let sr=ctx.sampleRate, bin=sr/analyser.fftSize;return {arr,sr,bin,off:offset}}
 function updateDisplayedStats(){const useSlow=$('response').value==='1';const e=useSlow?slowE:fastE;const v=e>0?10*Math.log10(e):NaN;const mn=useSlow?minSlow:minFast,mx=useSlow?maxSlow:maxFast;const leq=energyTime>0?10*Math.log10(energy/energyTime):NaN;if(Number.isFinite(v)){$('big').textContent=$('inst').textContent=v.toFixed(1);$('bar').style.width=Math.max(0,Math.min(100,(v-20)/110*100))+'%'}$('leq').textContent=Number.isFinite(leq)?leq.toFixed(1):'--.-';$('max').textContent=Number.isFinite(mx)?mx.toFixed(1):'--.-';$('min').textContent=Number.isFinite(mn)?mn.toFixed(1):'--.-'}
 function loop(now){if(!running||paused)return;updateDisplayedStats();const useSlow=$('response').value==='1',e=useSlow?slowE:fastE,v=e>0?10*Math.log10(e):NaN;if(Number.isFinite(v)){history.push(v);if(history.length>900)history.shift()}const sec=energyTime;$('elapsed').textContent=new Date(sec*1000).toISOString().slice(11,19);drawHistory();if(analyser)drawSpectrum(spectrumLevels());requestAnimationFrame(loop)}
