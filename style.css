@@ -82,3 +82,7 @@ main{max-width:1180px;margin:18px auto;padding:0 18px;display:grid;grid-template
 @media(max-width:420px){
   .band-panel{height:220px}
 }
+
+/* V14: aviso visual discreto para bandas con menos de 4 bins FFT. */
+.band.low-resolution .band-label{opacity:.62;text-decoration:underline dotted;text-underline-offset:3px}
+.band.low-resolution .band-value{opacity:.72}

@@ -4,7 +4,8 @@ let fastE=undefined, slowE=undefined;
 let measurementReady=false, stabilizationElapsed=0;
 const STABILIZATION_SEC=2.0;
 let minFast=Infinity,maxFast=-Infinity,minSlow=Infinity,maxSlow=-Infinity;
-let latestLevel=NaN, latestRawLevel=NaN;
+let latestLevel=NaN, latestRawLevel=NaN, latestMeans={A:NaN,C:NaN,Z:NaN};
+let bandAverages={oct:new Map(),third:new Map()},lastBandUpdate=0;
 let clipSamples=0,totalSamples=0,lastClipAt=0;
 let sessionStartedAt=null, calibrationSampling=false, calibrationSamples=[], pendingCalibration=null;
 const $=id=>document.getElementById(id); const canv=$('spectrum'), hist=$('history');
@@ -33,7 +34,7 @@ const HF_CORR={
 let filters={A:null,C:null};
 function makeCascade(kind,fs){const bank=Math.abs(fs-44100)<Math.abs(fs-48000)?44100:48000;const coeffs=[...SOS[bank][kind],HF_CORR[bank]];return coeffs.map(c=>({b0:c[0],b1:c[1],b2:c[2],a1:c[4],a2:c[5],z1:0,z2:0}))}
 function runCascade(x,sections){let y=x;for(const s of sections){const o=s.b0*y+s.z1;s.z1=s.b1*y-s.a1*o+s.z2;s.z2=s.b2*y-s.a2*o;y=o}return y}
-function processAudio(ev){if(!running||paused)return;const input=ev.inputBuffer.getChannelData(0);let sumA=0,sumC=0,sumZ=0,blockClip=0;for(let i=0;i<input.length;i++){const x=input[i];if(Math.abs(x)>=0.995)blockClip++;const a=runCascade(x,filters.A),c=runCascade(x,filters.C);sumA+=a*a;sumC+=c*c;sumZ+=x*x}const n=input.length;if(!n)return;clipSamples+=blockClip;totalSamples+=n;if(blockClip>0)lastClipAt=performance.now();const mean={A:sumA/n,C:sumC/n,Z:sumZ/n}[weighting];if(!(mean>0))return;const rawDb=10*Math.log10(mean);const off=currentOffset();const eCal=mean*Math.pow(10,off/10);latestRawLevel=rawDb;latestLevel=10*Math.log10(eCal);
+function processAudio(ev){if(!running||paused)return;const input=ev.inputBuffer.getChannelData(0);let sumA=0,sumC=0,sumZ=0,blockClip=0;for(let i=0;i<input.length;i++){const x=input[i];if(Math.abs(x)>=0.995)blockClip++;const a=runCascade(x,filters.A),c=runCascade(x,filters.C);sumA+=a*a;sumC+=c*c;sumZ+=x*x}const n=input.length;if(!n)return;clipSamples+=blockClip;totalSamples+=n;if(blockClip>0)lastClipAt=performance.now();latestMeans={A:sumA/n,C:sumC/n,Z:sumZ/n};const mean=latestMeans[weighting];if(!(mean>0))return;const rawDb=10*Math.log10(mean);const off=currentOffset();const eCal=mean*Math.pow(10,off/10);latestRawLevel=rawDb;latestLevel=10*Math.log10(eCal);
   const dt=n/ctx.sampleRate;
   // FAST/SLOW se integran en energía (p²), no promediando dB.
   const af=1-Math.exp(-dt/0.125), as=1-Math.exp(-dt/1.0);
@@ -66,7 +67,7 @@ function processAudio(ev){if(!running||paused)return;const input=ev.inputBuffer.
   const lf=10*Math.log10(fastE), ls=10*Math.log10(slowE);
   minFast=Math.min(minFast,lf);maxFast=Math.max(maxFast,lf);minSlow=Math.min(minSlow,ls);maxSlow=Math.max(maxSlow,ls);
 }
-async function start(){if(!ctx){const requested={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1};stream=await navigator.mediaDevices.getUserMedia({audio:requested,video:false});track=stream.getAudioTracks()[0];ctx=new (window.AudioContext||window.webkitAudioContext)();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=8192;analyser.smoothingTimeConstant=0;source.connect(analyser);filters.A=makeCascade('A',ctx.sampleRate);filters.C=makeCascade('C',ctx.sampleRate);
+async function start(){if(!ctx){const requested={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1};stream=await navigator.mediaDevices.getUserMedia({audio:requested,video:false});track=stream.getAudioTracks()[0];ctx=new (window.AudioContext||window.webkitAudioContext)();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=32768;analyser.smoothingTimeConstant=0;source.connect(analyser);filters.A=makeCascade('A',ctx.sampleRate);filters.C=makeCascade('C',ctx.sampleRate);
     // ScriptProcessor se usa para mantener compatibilidad amplia (incluido Safari/iOS).
     // El procesamiento es temporal; el analyser queda solo para visualización espectral.
     processor=ctx.createScriptProcessor(1024,1,1);silentGain=ctx.createGain();silentGain.gain.value=0;source.connect(processor);processor.connect(silentGain);silentGain.connect(ctx.destination);processor.onaudioprocess=processAudio;renderMicInfo()}
@@ -91,87 +92,91 @@ function updateInputStatus(){const el=$('inputStatus');if(!el)return;if(!ctx){el
 function updateDisplayedStats(){const useSlow=$('response').value==='1';const e=useSlow?slowE:fastE;const v=e>0?10*Math.log10(e):NaN;const mn=useSlow?minSlow:minFast,mx=useSlow?maxSlow:maxFast;const leq=energyTime>0?10*Math.log10(energy/energyTime):NaN;if(Number.isFinite(v)){$('big').textContent=$('inst').textContent=v.toFixed(1);$('bar').style.width=Math.max(0,Math.min(100,(v-20)/110*100))+'%'}$('leq').textContent=Number.isFinite(leq)?leq.toFixed(1):'--.-';$('max').textContent=Number.isFinite(mx)?mx.toFixed(1):'--.-';$('min').textContent=Number.isFinite(mn)?mn.toFixed(1):'--.-'}
 function loop(now){if(!running||paused)return;updateDisplayedStats();updateInputStatus();const useSlow=$('response').value==='1',e=useSlow?slowE:fastE,v=e>0?10*Math.log10(e):NaN;if(measurementReady&&Number.isFinite(v)){history.push(v);if(history.length>900)history.shift()}const sec=energyTime;$('elapsed').textContent=new Date(sec*1000).toISOString().slice(11,19);drawHistory();if(analyser)drawSpectrum(spectrumLevels());requestAnimationFrame(loop)}
 function drawHistory(){resize(hist);let g=hist.getContext('2d'),w=hist.width,h=hist.height;g.clearRect(0,0,w,h);g.strokeStyle='#1c3440';g.lineWidth=1;for(let y=0;y<=5;y++){g.beginPath();g.moveTo(0,y*h/5);g.lineTo(w,y*h/5);g.stroke()}if(history.length<2)return;g.strokeStyle='#d6f23d';g.lineWidth=2*devicePixelRatio;g.beginPath();history.forEach((v,i)=>{let x=i/(history.length-1)*w,y=h-(Math.max(20,Math.min(130,v))-20)/110*h;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}
-const oct=[31.5,63,125,250,500,1000,2000,4000,8000,16000];const third=[25,31.5,40,50,63,80,100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500,16000];
-function bandLevel(s,fc,frac){
-  const r=2**(1/(2*frac)),lo=fc/r,hi=fc*r;
-  let sum=0;
-  for(let i=Math.max(1,Math.floor(lo/s.bin));i<Math.min(s.arr.length,Math.ceil(hi/s.bin));i++){
-    const f=i*s.bin,db=s.arr[i]+s.off+weight(f,weighting);
-    if(Number.isFinite(db))sum+=10**(db/10);
+// --- Análisis en frecuencia V14 ---
+// IEC 61260 usa G = 10^0.3 para definir las frecuencias exactas. En pantalla
+// se conservan las frecuencias nominales conocidas por el alumno.
+const G=Math.pow(10,0.3);
+const OCT_NOM=[31.5,63,125,250,500,1000,2000,4000,8000,16000];
+const THIRD_NOM=[25,31.5,40,50,63,80,100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500,16000];
+function exactCenters(nominal,division){
+  return nominal.map(n=>{
+    const k=Math.round(division*Math.log(n/1000)/Math.log(G));
+    return {nom:n,fc:1000*Math.pow(G,k/division)};
+  });
+}
+const OCT_BANDS=exactCenters(OCT_NOM,1),THIRD_BANDS=exactCenters(THIRD_NOM,3);
+function spectrumLevels(offset=currentOffset()){
+  const arr=new Float32Array(analyser.frequencyBinCount);
+  analyser.getFloatFrequencyData(arr);
+  const sr=ctx.sampleRate,bin=sr/analyser.fftSize;
+  return {arr,sr,bin,off:offset};
+}
+function spectralNormalization(s){
+  // Normaliza la suma de energía espectral contra el RMS temporal de la misma
+  // ponderación. Así el nivel por bandas no depende arbitrariamente del fftSize.
+  let spec=0;
+  for(let i=1;i<s.arr.length;i++){
+    const f=i*s.bin;if(f<20||f>Math.min(20000,s.sr/2))continue;
+    const db=s.arr[i]+weight(f,weighting);
+    if(Number.isFinite(db))spec+=Math.pow(10,db/10);
   }
-  return sum>0?10*Math.log10(sum):NaN;
+  const temporal=latestMeans[weighting];
+  if(!(spec>0)&&!(temporal>0))return 1;
+  if(!(spec>0)||!(temporal>0))return 1;
+  return temporal/spec;
+}
+function bandEnergy(s,band,division,norm){
+  const edge=Math.pow(G,1/(2*division)),lo=band.fc/edge,hi=band.fc*edge;
+  let sum=0,count=0;
+  const i0=Math.max(1,Math.ceil(lo/s.bin)),i1=Math.min(s.arr.length-1,Math.floor(hi/s.bin));
+  for(let i=i0;i<=i1;i++){
+    const f=i*s.bin,db=s.arr[i]+weight(f,weighting);
+    if(Number.isFinite(db)){sum+=Math.pow(10,db/10);count++}
+  }
+  const calibrated=sum*norm*Math.pow(10,s.off/10);
+  return {energy:calibrated,count,lo,hi};
+}
+function averageBandEnergies(mode,items){
+  const now=performance.now(),dt=lastBandUpdate?Math.min(0.25,(now-lastBandUpdate)/1000):0.05;
+  lastBandUpdate=now;const tau=.65,a=1-Math.exp(-dt/tau),map=bandAverages[mode];
+  return items.map(x=>{
+    const key=String(x.nom),prev=map.get(key);
+    const e=prev==null?x.energy:prev+a*(x.energy-prev);map.set(key,e);
+    return {...x,energy:e,db:e>0?10*Math.log10(e):NaN};
+  });
 }
 function niceBandScale(values){
-  const valid=values.filter(Number.isFinite);
-  if(!valid.length)return {min:20,max:80,step:10};
-  let lo=Math.min(...valid),hi=Math.max(...valid);
-  // Evita que una banda casi silenciosa aplaste visualmente el resto.
-  const sorted=[...valid].sort((a,b)=>a-b);
+  const valid=values.filter(Number.isFinite);if(!valid.length)return {min:20,max:80,step:10};
+  let lo=Math.min(...valid),hi=Math.max(...valid);const sorted=[...valid].sort((a,b)=>a-b);
   const p10=sorted[Math.floor((sorted.length-1)*.10)],p90=sorted[Math.floor((sorted.length-1)*.90)];
   if(valid.length>5){lo=Math.max(lo,p10-12);hi=Math.max(hi,p90+8)}
-  let range=Math.max(30,hi-lo);
-  let min=Math.floor((lo-6)/10)*10,max=Math.ceil((hi+6)/10)*10;
-  if(max-min<30)max=min+30;
-  min=Math.max(-20,min);max=Math.min(140,max);
-  if(max-min<30)min=Math.max(-20,max-30);
-  const step=(max-min)<=40?5:10;
-  min=Math.floor(min/step)*step;max=Math.ceil(max/step)*step;
-  return {min,max,step};
+  let min=Math.floor((lo-6)/10)*10,max=Math.ceil((hi+6)/10)*10;if(max-min<30)max=min+30;
+  min=Math.max(-20,min);max=Math.min(140,max);if(max-min<30)min=Math.max(-20,max-30);
+  const step=(max-min)<=40?5:10;return {min:Math.floor(min/step)*step,max:Math.ceil(max/step)*step,step};
 }
-function renderBandYAxis(scale){
-  const axis=$('bandYAxis');if(!axis)return;
-  let html='';
-  for(let v=scale.min;v<=scale.max+.001;v+=scale.step){
-    const pct=(v-scale.min)/(scale.max-scale.min)*100;
-    html+=`<span class="tick" style="bottom:${pct}%">${Math.round(v)}</span>`;
-  }
-  axis.innerHTML=html;
-}
+function renderBandYAxis(scale){const axis=$('bandYAxis');if(!axis)return;let html='';for(let v=scale.min;v<=scale.max+.001;v+=scale.step){const pct=(v-scale.min)/(scale.max-scale.min)*100;html+=`<span class="tick" style="bottom:${pct}%">${Math.round(v)}</span>`}axis.innerHTML=html}
 function formatFc(fc){return fc>=1000?`${Number((fc/1000).toFixed(fc%1000?2:0))}k`:String(fc)}
 function updateFrequencyModeUI(){
   const card=document.querySelector('.spectrum-card'),fft=$('fftPanel'),bp=$('bandPanel'),info=$('bandScaleInfo'),sub=$('frequencySubtitle');
-  if(card)card.dataset.view=view;
-  if(fft)fft.classList.toggle('hidden',view!=='fft');
-  if(bp)bp.classList.toggle('hidden',view==='fft');
-  if(info)info.classList.toggle('hidden',view==='fft');
-  if(sub)sub.textContent=view==='fft'?'Espectro FFT en tiempo real · escala logarítmica 20 Hz–20 kHz':view==='oct'?'Bandas de 1/1 octava · nivel por frecuencia central':'Bandas de 1/3 octava · deslice horizontalmente para recorrer todas las bandas';
+  if(card)card.dataset.view=view;if(fft)fft.classList.toggle('hidden',view!=='fft');if(bp)bp.classList.toggle('hidden',view==='fft');if(info)info.classList.toggle('hidden',view==='fft');
+  if(sub)sub.textContent=view==='fft'?'FFT en tiempo real · 32 768 puntos · escala logarítmica 20 Hz–20 kHz':view==='oct'?'1/1 octava · frecuencias centrales exactas · estimación FFT normalizada':'1/3 octava · frecuencias centrales exactas · estimación FFT normalizada';
 }
 function drawFft(s){
-  resize(canv);const g=canv.getContext('2d'),w=canv.width,h=canv.height;g.clearRect(0,0,w,h);
-  // Fondo y retícula discreta.
-  g.strokeStyle='#17303a';g.lineWidth=1;
+  resize(canv);const g=canv.getContext('2d'),w=canv.width,h=canv.height;g.clearRect(0,0,w,h);g.strokeStyle='#17303a';g.lineWidth=1;
   for(let y=1;y<5;y++){g.beginPath();g.moveTo(0,y*h/5);g.lineTo(w,y*h/5);g.stroke()}
-  const values=[];
-  for(let i=1;i<s.arr.length;i++){const f=i*s.bin;if(f<20||f>20000)continue;const db=s.arr[i]+s.off+weight(f,weighting);if(Number.isFinite(db))values.push(db)}
-  const sc=niceBandScale(values);
-  g.strokeStyle='#d6f23d';g.lineWidth=1.6*devicePixelRatio;g.beginPath();let started=false;
-  for(let i=1;i<s.arr.length;i++){
-    const f=i*s.bin;if(f<20||f>20000)continue;
-    const db=s.arr[i]+s.off+weight(f,weighting);if(!Number.isFinite(db))continue;
-    const x=(Math.log10(f)-Math.log10(20))/(Math.log10(20000)-Math.log10(20))*w;
-    const clamped=Math.max(sc.min,Math.min(sc.max,db)),y=h-(clamped-sc.min)/(sc.max-sc.min)*h;
-    started?g.lineTo(x,y):g.moveTo(x,y);started=true;
-  }
-  g.stroke();
+  const norm=spectralNormalization(s),corr=10*Math.log10(norm)+s.off,values=[];
+  for(let i=1;i<s.arr.length;i++){const f=i*s.bin;if(f<20||f>Math.min(20000,s.sr/2))continue;const db=s.arr[i]+weight(f,weighting)+corr;if(Number.isFinite(db))values.push(db)}
+  const sc=niceBandScale(values);g.strokeStyle='#d6f23d';g.lineWidth=1.6*devicePixelRatio;g.beginPath();let started=false;
+  for(let i=1;i<s.arr.length;i++){const f=i*s.bin;if(f<20||f>Math.min(20000,s.sr/2))continue;const db=s.arr[i]+weight(f,weighting)+corr;if(!Number.isFinite(db))continue;const x=(Math.log10(f)-Math.log10(20))/(Math.log10(20000)-Math.log10(20))*w,cl=Math.max(sc.min,Math.min(sc.max,db)),y=h-(cl-sc.min)/(sc.max-sc.min)*h;started?g.lineTo(x,y):g.moveTo(x,y);started=true}g.stroke();
 }
 function drawBands(s){
-  const list=view==='oct'?oct:third,frac=view==='oct'?1:3;
-  const vals=list.map(fc=>({fc,db:bandLevel(s,fc,frac)}));
-  const scale=niceBandScale(vals.map(x=>x.db));renderBandYAxis(scale);
-  const container=$('bands');if(!container)return;
-  container.innerHTML=vals.map(({fc,db})=>{
-    const safe=Number.isFinite(db)?db:scale.min;
-    const pct=Math.max(0,Math.min(100,(safe-scale.min)/(scale.max-scale.min)*100));
-    const value=Number.isFinite(db)?db.toFixed(1):'--';
-    return `<div class="band" title="${formatFc(fc)} Hz · ${value} dB(${weighting})"><div class="band-bar-area"><span class="band-value" style="bottom:calc(${pct}% + 7px)">${value}</span><i style="height:${pct}%"></i></div><span class="band-label">${formatFc(fc)}</span></div>`;
-  }).join('');
-  const info=$('bandScaleInfo');if(info)info.textContent=`Escala automática: ${scale.min} a ${scale.max} dB(${weighting}) · frecuencia central (Hz)`;
+  const mode=view==='oct'?'oct':'third',division=mode==='oct'?1:3,bands=mode==='oct'?OCT_BANDS:THIRD_BANDS,norm=spectralNormalization(s);
+  let vals=bands.filter(b=>b.fc<Math.min(20000,s.sr/2)).map(b=>{const r=bandEnergy(s,b,division,norm);return {...b,...r}});
+  vals=averageBandEnergies(mode,vals);const scale=niceBandScale(vals.map(x=>x.db));renderBandYAxis(scale);const container=$('bands');if(!container)return;
+  container.innerHTML=vals.map(({nom,fc,db,count})=>{const safe=Number.isFinite(db)?db:scale.min,pct=Math.max(0,Math.min(100,(safe-scale.min)/(scale.max-scale.min)*100)),value=Number.isFinite(db)?db.toFixed(1):'--',lowRes=count<4;return `<div class="band${lowRes?' low-resolution':''}" title="${formatFc(nom)} Hz nominal · ${fc.toFixed(2)} Hz exacta · ${value} dB(${weighting}) · ${count} bins"><div class="band-bar-area"><span class="band-value" style="bottom:calc(${pct}% + 7px)">${value}</span><i style="height:${pct}%"></i></div><span class="band-label">${formatFc(nom)}</span></div>`}).join('');
+  const low=vals.filter(x=>x.count<4).length,info=$('bandScaleInfo');if(info)info.textContent=`Escala: ${scale.min} a ${scale.max} dB(${weighting}) · FFT 32768 · Δf ${s.bin.toFixed(2)} Hz${low?` · ${low} banda(s) de baja resolución marcadas`:''} · uso educativo, no IEC 61260`;
 }
-function drawSpectrum(s){
-  updateFrequencyModeUI();
-  if(view==='fft'){drawFft(s);if($('bands'))$('bands').innerHTML='';return}
-  drawBands(s);
-}
+function drawSpectrum(s){updateFrequencyModeUI();if(view==='fft'){drawFft(s);if($('bands'))$('bands').innerHTML='';return}drawBands(s)}
 function boolText(v){return v===false?'desactivada':v===true?'activada':'no informado'}
 function renderMicInfo(){if(!track)return;const s=track.getSettings?track.getSettings():{};const rows=[['Micrófono',track.label||'Entrada de audio'],['Sample rate',s.sampleRate?`${s.sampleRate} Hz`:(ctx?`${ctx.sampleRate} Hz`:'no informado')],['Canales',s.channelCount??'no informado'],['AGC',boolText(s.autoGainControl)],['Supresión de ruido',boolText(s.noiseSuppression)],['Cancelación de eco',boolText(s.echoCancellation)]];if($('micInfo'))$('micInfo').innerHTML=rows.map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('')}
 if($('openCal'))$('openCal').onclick=()=>{const p=$('calibrationPanel');if(p){p.classList.remove('hidden');p.scrollIntoView({behavior:'smooth',block:'start'})}};if($('closeCal'))$('closeCal').onclick=()=>{const p=$('calibrationPanel');if(p)p.classList.add('hidden')};if($('referenceLevel'))$('referenceLevel').oninput=()=>{if($('refCalLevel'))$('refCalLevel').textContent=(+$('referenceLevel').value||0).toFixed(1);pendingCalibration=null;if($('saveCal'))$('saveCal').disabled=true;if($('newCalOffset'))$('newCalOffset').textContent='--.-'};
