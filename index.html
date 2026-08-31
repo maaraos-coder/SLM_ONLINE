@@ -1,22 +1,125 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sonómetro Online · Diplomado en Acústica de la edificación · UC</title><link rel="stylesheet" href="style.css"></head><body>
-<header><div class="brand"><img class="logo-uc" src="assets/logos/logo_uc.png" alt="Pontificia Universidad Católica de Chile"><span class="brand-sep"></span><img class="logo-decon" src="assets/logos/logo_decon_uc.png" alt="DECON UC"><div class="brand-title"><h1>SONÓMETRO ONLINE</h1><p>Diplomado en Acústica de la edificación · Laboratorio educativo</p></div></div><span id="status">● DETENIDO</span></header>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071018">
+  <title>Sonómetro Online · Diplomado en Acústica de la edificación · UC</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img class="logo-uc" src="assets/logos/logo_uc.png" alt="Pontificia Universidad Católica de Chile">
+    <span class="brand-sep"></span>
+    <img class="logo-decon" src="assets/logos/logo_decon_uc.png" alt="DECON UC">
+    <div class="brand-title">
+      <h1>SONÓMETRO ONLINE</h1>
+      <p>Diplomado en Acústica de la edificación</p>
+    </div>
+  </div>
+  <span id="status">● DETENIDO</span>
+</header>
+
 <main>
-<section class="meter card"><div class="mode"><button data-w="A" class="active">A</button><button data-w="C">C</button><button data-w="Z">Z</button></div><div id="big">--.-</div><div id="unit">dB(A)</div><div class="bar"><i id="bar"></i></div><div class="grid"><div><b id="inst">--.-</b><span id="instLabel">LAF</span></div><div><b id="leq">--.-</b><span id="leqLabel">LAeq,T</span></div><div><b id="max">--.-</b><span id="maxLabel">LAmax</span></div><div><b id="min">--.-</b><span id="minLabel">LAmin</span></div></div><div class="time">Tiempo <b id="elapsed">00:00:00</b></div><div class="mobile-quick"><span>Medición en tiempo real</span><span><b id="mobileWeight">A</b> · <b id="mobileResponse">FAST</b></span></div></section>
-<section class="controls card">
-<div class="buttons"><button id="start" class="primary">🎙 Iniciar</button><button id="pause">Pausar</button><button id="finish">Finalizar y guardar</button><button id="reset">Reiniciar</button></div>
-<div class="response-box"><label>Respuesta temporal</label><select id="response"><option value="0.125">FAST · 125 ms</option><option value="1">SLOW · 1 s</option></select></div>
-<details class="advanced">
-<summary>⚙ Calibración y entrada de audio</summary>
-<div class="advanced-body">
-<div class="cal-summary"><label>Calibración opcional</label><div class="cal-state"><strong id="calStatus">Sin calibrar</strong><span id="calOffsetLabel">Estimación automática</span></div><button id="openCal" class="secondary full">Calibrar con referencia</button></div>
-<div class="mic-card"><div class="mic-card-title">Entrada de micrófono</div><div id="micInfo" class="mic-info"><span>Inicie la medición para consultar la configuración real del dispositivo.</span></div></div>
-<p class="note">La app intenta reducir el procesamiento automático del micrófono. La calibración es opcional y no convierte la app en un sonómetro IEC 61672.</p>
-</div>
-</details>
-</section>
-<section id="calibrationPanel" class="card wide calibration-panel hidden"><div class="title"><h2>Calibración guiada</h2><button id="closeCal" class="view">Cerrar</button></div><div class="cal-grid"><div class="cal-step"><span class="step-num">1</span><div><b>Prepare una referencia</b><p>Coloque este dispositivo junto a un sonómetro de referencia y expóngalos al mismo ruido estable. Para calibrar dB(A), mantenga seleccionada la ponderación A.</p></div></div><div class="cal-step"><span class="step-num">2</span><div><b>Indique el nivel de referencia</b><div class="reference-input"><input id="referenceLevel" type="number" step="0.1" value="70.0"><span id="referenceUnit">dB(A)</span></div></div></div><div class="cal-step"><span class="step-num">3</span><div><b>Promedie la lectura del dispositivo</b><p>La app tomará 3 segundos de señal sin aplicar la corrección guardada.</p><button id="sampleCal" class="primary small">Medir 3 s</button></div></div></div><div class="cal-result"><div><span>Nivel bruto promedio</span><strong id="rawCalLevel">--.-</strong></div><div><span>Referencia</span><strong id="refCalLevel">70.0</strong></div><div><span>Corrección calculada</span><strong id="newCalOffset">--.-</strong></div></div><div class="cal-actions"><button id="saveCal" class="primary" disabled>Guardar calibración</button><button id="clearCal">Eliminar calibración</button></div><p class="note">La calibración se guarda localmente en este navegador. Si cambia de teléfono, computador, navegador o entrada de audio, vuelva a calibrar.</p></section>
-<section class="card wide history-card"><div class="title"><h2>Historia temporal</h2><span id="histLegend">dB(A)</span></div><canvas id="history"></canvas></section>
-<section class="card wide spectrum-card"><div class="title"><h2>Análisis en frecuencia</h2><div><button class="view active" data-view="fft">FFT</button><button class="view" data-view="oct">1/1 octava</button><button class="view" data-view="third">1/3 octava</button></div></div><canvas id="spectrum"></canvas><div id="bands" class="bands"></div></section>
-<section class="card wide sessions"><div class="title"><h2>Mediciones guardadas</h2><button id="clearSessions" class="view">Borrar historial</button></div><p id="noSessions" class="empty">Todavía no hay mediciones guardadas.</p><div id="sessionList" class="session-list"></div></section>
-<section class="card wide info"><h2>Modo educativo</h2><p><b>Leq,T</b> se calcula mediante integración energética durante todo el período de medición. Las ponderaciones <b>A, C y Z</b> se aplican al motor de nivel y al análisis frecuencial. La lectura absoluta depende del micrófono, del sistema operativo y del navegador; por eso se recomienda calibrar cada dispositivo contra un instrumento de referencia.</p></section>
-</main><footer>Procesamiento local en el navegador · No se graba ni se sube audio</footer><script src="app.js"></script></body></html>
+  <section class="meter card">
+    <div class="mode" aria-label="Ponderación frecuencial">
+      <button data-w="A" class="active">A</button>
+      <button data-w="C">C</button>
+      <button data-w="Z">Z</button>
+    </div>
+
+    <div class="reading-block">
+      <div id="big">--.-</div>
+      <div id="unit">dB(A)</div>
+    </div>
+
+    <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+
+    <div class="grid">
+      <div class="instant-stat"><b id="inst">--.-</b><span id="instLabel">LAF</span></div>
+      <div><b id="leq">--.-</b><span id="leqLabel">LAeq,T</span></div>
+      <div><b id="max">--.-</b><span id="maxLabel">LAFmax</span></div>
+      <div><b id="min">--.-</b><span id="minLabel">LAFmin</span></div>
+    </div>
+
+    <div class="meter-meta">
+      <span>Tiempo <b id="elapsed">00:00:00</b></span>
+      <span><b id="mobileWeight">A</b> · <b id="mobileResponse">FAST</b></span>
+    </div>
+
+    <div class="meter-actions">
+      <button id="start" class="primary">🎙 Iniciar</button>
+      <button id="pause">Pausar</button>
+      <button id="finish" class="save">Finalizar y guardar</button>
+      <button id="reset" class="ghost">Reiniciar</button>
+    </div>
+  </section>
+
+  <section class="controls card">
+    <div class="control-section">
+      <label>Respuesta temporal</label>
+      <div class="response-toggle" role="group" aria-label="Respuesta temporal">
+        <button type="button" data-response="0.125" class="active">FAST <small>125 ms</small></button>
+        <button type="button" data-response="1">SLOW <small>1 s</small></button>
+      </div>
+      <select id="response" aria-label="Respuesta temporal" class="sr-only">
+        <option value="0.125">FAST · 125 ms</option>
+        <option value="1">SLOW · 1 s</option>
+      </select>
+    </div>
+
+    <details class="advanced">
+      <summary>Calibración y ajustes avanzados <span>Opcional</span></summary>
+      <div class="advanced-body">
+        <div class="cal-summary">
+          <label>Calibración del dispositivo</label>
+          <div class="cal-state">
+            <strong id="calStatus">Estimación automática</strong>
+            <span id="calOffsetLabel">Sin calibración externa</span>
+          </div>
+          <button id="openCal" class="secondary full">Calibrar con referencia</button>
+        </div>
+        <div class="mic-card">
+          <div class="mic-card-title">Entrada de micrófono</div>
+          <div id="micInfo" class="mic-info"><span>Inicie la medición para consultar la configuración real del dispositivo.</span></div>
+        </div>
+      </div>
+    </details>
+
+    <p class="note">Medición educativa estimada. La precisión absoluta depende del micrófono y del dispositivo. La calibración externa es opcional.</p>
+  </section>
+
+  <section id="calibrationPanel" class="card wide calibration-panel hidden">
+    <div class="title"><h2>Calibración guiada</h2><button id="closeCal" class="view">Cerrar</button></div>
+    <div class="cal-grid">
+      <div class="cal-step"><span class="step-num">1</span><div><b>Prepare una referencia</b><p>Coloque este dispositivo junto a un sonómetro de referencia y expóngalos al mismo ruido estable.</p></div></div>
+      <div class="cal-step"><span class="step-num">2</span><div><b>Indique el nivel de referencia</b><div class="reference-input"><input id="referenceLevel" type="number" step="0.1" value="70.0"><span id="referenceUnit">dB(A)</span></div></div></div>
+      <div class="cal-step"><span class="step-num">3</span><div><b>Promedie la lectura</b><p>La app tomará 3 segundos de señal sin aplicar la corrección guardada.</p><button id="sampleCal" class="primary small">Medir 3 s</button></div></div>
+    </div>
+    <div class="cal-result"><div><span>Nivel bruto promedio</span><strong id="rawCalLevel">--.-</strong></div><div><span>Referencia</span><strong id="refCalLevel">70.0</strong></div><div><span>Corrección calculada</span><strong id="newCalOffset">--.-</strong></div></div>
+    <div class="cal-actions"><button id="saveCal" class="primary" disabled>Guardar calibración</button><button id="clearCal">Eliminar calibración</button></div>
+  </section>
+
+  <section class="card wide history-card">
+    <div class="title"><h2>Historia temporal</h2><span id="histLegend">dB(A)</span></div>
+    <canvas id="history"></canvas>
+  </section>
+
+  <section class="card wide spectrum-card">
+    <div class="title"><h2>Análisis en frecuencia</h2><div><button class="view active" data-view="fft">FFT</button><button class="view" data-view="oct">1/1 octava</button><button class="view" data-view="third">1/3 octava</button></div></div>
+    <canvas id="spectrum"></canvas><div id="bands" class="bands"></div>
+  </section>
+
+  <section class="card wide sessions">
+    <div class="title"><h2>Mediciones guardadas</h2><button id="clearSessions" class="view">Borrar historial</button></div>
+    <p id="noSessions" class="empty">Todavía no hay mediciones guardadas.</p>
+    <div id="sessionList" class="session-list"></div>
+  </section>
+
+  <section class="card wide info"><h2>Modo educativo</h2><p><b>Leq,T</b> se integra energéticamente durante el tiempo efectivo de medición. <b>Lmax</b> y <b>Lmin</b> corresponden a la respuesta temporal seleccionada (FAST o SLOW). La lectura absoluta sin calibración externa es estimativa.</p></section>
+</main>
+<footer>Procesamiento local en el navegador · No se graba ni se sube audio</footer>
+<script src="app.js"></script>
+</body>
+</html>
