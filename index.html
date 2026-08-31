@@ -46,6 +46,7 @@
     <div class="meter-meta">
       <span>Tiempo <b id="elapsed">00:00:00</b></span>
       <span><b id="mobileWeight">A</b> · <b id="mobileResponse">FAST</b></span>
+      <span id="inputStatus" class="input-status">Entrada: esperando micrófono</span>
     </div>
 
     <div class="meter-actions">
@@ -118,7 +119,7 @@
     <div id="sessionList" class="session-list"></div>
   </section>
 
-  <section class="card wide info"><h2>Modo educativo</h2><p><b>Leq,T</b> se integra energéticamente durante el tiempo efectivo de medición. <b>Lmax</b> y <b>Lmin</b> corresponden a la respuesta temporal seleccionada (FAST o SLOW). La lectura absoluta sin calibración externa es estimativa.</p></section>
+  <section class="card wide info"><h2>Modo educativo</h2><p><b>Leq,T</b> se integra energéticamente durante el tiempo efectivo de medición. <b>Lmax</b> y <b>Lmin</b> corresponden a la respuesta temporal seleccionada (FAST o SLOW). La app vigila saturación de entrada y mejora la aproximación digital de las ponderaciones A/C en altas frecuencias. La lectura absoluta sin calibración externa sigue siendo estimativa y no sustituye instrumentación IEC 61672.</p></section>
 </main>
 <footer>Procesamiento local en el navegador · No se graba ni se sube audio</footer>
 <script src="app.js"></script>
