@@ -109,8 +109,30 @@
   </section>
 
   <section class="card wide spectrum-card">
-    <div class="title"><h2>Análisis en frecuencia</h2><div><button class="view active" data-view="fft">FFT</button><button class="view" data-view="oct">1/1 octava</button><button class="view" data-view="third">1/3 octava</button></div></div>
-    <canvas id="spectrum"></canvas><div id="bands" class="bands"></div>
+    <div class="frequency-head">
+      <div>
+        <h2>Análisis en frecuencia</h2>
+        <p id="frequencySubtitle">Espectro FFT en tiempo real · escala logarítmica 20 Hz–20 kHz</p>
+      </div>
+      <div class="frequency-tabs" role="group" aria-label="Vista de análisis en frecuencia">
+        <button class="view active" data-view="fft">FFT</button>
+        <button class="view" data-view="oct">1/1 octava</button>
+        <button class="view" data-view="third">1/3 octava</button>
+      </div>
+    </div>
+
+    <div id="fftPanel" class="fft-panel">
+      <canvas id="spectrum"></canvas>
+      <div class="frequency-axis"><span>20 Hz</span><span>100</span><span>1 kHz</span><span>10 kHz</span><span>20 kHz</span></div>
+    </div>
+
+    <div id="bandPanel" class="band-panel hidden" aria-live="polite">
+      <div class="band-y-axis" id="bandYAxis" aria-hidden="true"></div>
+      <div class="band-scroll" id="bandScroll">
+        <div id="bands" class="bands"></div>
+      </div>
+    </div>
+    <div id="bandScaleInfo" class="band-scale-info hidden"></div>
   </section>
 
   <section class="card wide sessions">
