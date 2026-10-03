@@ -190,4 +190,38 @@ function finishAndSave(){const useSlow=$('response').value==='1',mn=useSlow?minS
 function deleteSession(id){saveSessions(storedSessions().filter(x=>x.id!==id));renderSessions()}
 function renderSessions(){const items=storedSessions(), list=$('sessionList'), empty=$('noSessions');if(!list)return;empty.style.display=items.length?'none':'block';list.innerHTML=items.map(x=>{let p=x.weighting;return `<article class="session"><div class="session-head"><div><b>${fmtDate(x.startedAt)}</b><span>${fmtDuration(x.duration)} · ${p} · ${x.response} · ${x.calibrated?'calibrado':'sin calibrar'}${x.clipping?' · saturación detectada':''}</span></div><button class="delete-session" data-id="${x.id}" aria-label="Eliminar medición">Eliminar</button></div><div class="session-values"><div><strong>${x.leq.toFixed(1)}</strong><span>L${p}eq,T · dB(${p})</span></div><div><strong>${x.max.toFixed(1)}</strong><span>L${p}${x.response==='SLOW'?'S':'F'}max · dB(${p})</span></div><div><strong>${x.min.toFixed(1)}</strong><span>L${p}${x.response==='SLOW'?'S':'F'}min · dB(${p})</span></div></div></article>`}).join('');list.querySelectorAll('.delete-session').forEach(b=>b.onclick=()=>deleteSession(+b.dataset.id))}
 if($('clearSessions'))$('clearSessions').onclick=()=>{if(storedSessions().length&&confirm('¿Borrar todas las mediciones guardadas en este dispositivo?')){saveSessions([]);renderSessions()}};
+
+const ORIENTATION_KEY='slm_screen_inverted_v1';
+let normalWindowScrollY=0;
+function setScreenInverted(active,{persist=true}={}){
+  const viewport=$('appViewport');
+  const btn=$('invertScreen');
+  if(!viewport||!btn)return;
+  if(active){
+    normalWindowScrollY=window.scrollY||document.documentElement.scrollTop||0;
+    document.body.classList.add('screen-inverted');
+    requestAnimationFrame(()=>{viewport.scrollTop=normalWindowScrollY;});
+  }else{
+    const restore=viewport.scrollTop||normalWindowScrollY||0;
+    document.body.classList.remove('screen-inverted');
+    requestAnimationFrame(()=>window.scrollTo({top:restore,left:0,behavior:'auto'}));
+  }
+  btn.setAttribute('aria-pressed',active?'true':'false');
+  btn.title=active?'Volver a la orientación normal':'Girar la interfaz 180° para orientar el micrófono inferior hacia la fuente';
+  if(window.matchMedia('(max-width:520px)').matches){
+    btn.setAttribute('aria-label',active?'Volver a orientación normal':'Invertir pantalla 180 grados');
+  }else{
+    btn.textContent=active?'↺ Orientación normal':'↻ Invertir pantalla';
+  }
+  if(persist){
+    try{localStorage.setItem(ORIENTATION_KEY,active?'1':'0')}catch{}
+  }
+  requestAnimationFrame(()=>{
+    resize(hist);resize(canv);drawHistory();
+    if(analyser&&ctx){try{drawSpectrum(spectrumLevels())}catch{}}
+  });
+}
+if($('invertScreen'))$('invertScreen').onclick=()=>setScreenInverted(!document.body.classList.contains('screen-inverted'));
+try{setScreenInverted(localStorage.getItem(ORIENTATION_KEY)==='1',{persist:false})}catch{setScreenInverted(false,{persist:false})}
+
 label();updateCalUI();renderSessions();updateInputStatus();resize(hist);resize(canv);
