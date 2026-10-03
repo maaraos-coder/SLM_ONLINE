@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="appViewport" class="app-viewport">
 <header>
   <div class="brand">
     <img class="logo-uc" src="assets/logos/logo_uc.png" alt="Pontificia Universidad Católica de Chile">
@@ -18,7 +19,10 @@
       <p>Diplomado en Acústica de la edificación</p>
     </div>
   </div>
-  <span id="status">● DETENIDO</span>
+  <div class="header-actions">
+    <span id="status">● DETENIDO</span>
+    <button id="invertScreen" class="orientation-button" type="button" aria-pressed="false" title="Girar la interfaz 180° para orientar el micrófono inferior hacia la fuente">↻ Invertir pantalla</button>
+  </div>
 </header>
 
 <main>
@@ -144,6 +148,7 @@
   <section class="card wide info"><h2>Modo educativo</h2><p><b>Leq,T</b> se integra energéticamente durante el tiempo efectivo de medición. <b>Lmax</b> y <b>Lmin</b> corresponden a la respuesta temporal seleccionada (FAST o SLOW). La app vigila saturación de entrada y mejora la aproximación digital de las ponderaciones A/C en altas frecuencias. La lectura absoluta sin calibración externa sigue siendo estimativa y no sustituye instrumentación IEC 61672.</p></section>
 </main>
 <footer>Procesamiento local en el navegador · No se graba ni se sube audio</footer>
+</div>
 <script src="app.js"></script>
 </body>
 </html>
