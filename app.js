@@ -222,6 +222,7 @@ function setScreenInverted(active,{persist=true}={}){
   });
 }
 if($('invertScreen'))$('invertScreen').onclick=()=>setScreenInverted(!document.body.classList.contains('screen-inverted'));
+if($('restoreOrientation'))$('restoreOrientation').onclick=()=>setScreenInverted(false);
 try{setScreenInverted(localStorage.getItem(ORIENTATION_KEY)==='1',{persist:false})}catch{setScreenInverted(false,{persist:false})}
 
 label();updateCalUI();renderSessions();updateInputStatus();resize(hist);resize(canv);
