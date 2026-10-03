@@ -86,3 +86,22 @@ main{max-width:1180px;margin:18px auto;padding:0 18px;display:grid;grid-template
 /* V14: aviso visual discreto para bandas con menos de 4 bins FFT. */
 .band.low-resolution .band-label{opacity:.62;text-decoration:underline dotted;text-underline-offset:3px}
 .band.low-resolution .band-value{opacity:.72}
+
+
+/* V16 · modo de pantalla invertida para uso con micrófono inferior */
+.app-viewport{min-height:100vh}
+.header-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.orientation-button{display:none;min-height:36px;border:1px solid #2d4550;border-radius:999px;padding:7px 11px;background:#142630;color:#dce8ed;font-size:11px;font-weight:700;white-space:nowrap}
+.orientation-button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#071018}
+body.screen-inverted{overflow:hidden}
+body.screen-inverted .app-viewport{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;transform:rotate(180deg);transform-origin:50% 50%;background:radial-gradient(circle at 50% 0,#123040,#071018 42%);-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+body.screen-inverted .orientation-button{background:var(--accent);border-color:var(--accent);color:#071018}
+@media(max-width:900px){
+  .orientation-button{display:inline-flex;align-items:center;justify-content:center;min-width:42px;max-width:150px}
+  .header-actions{gap:6px}
+  body.screen-inverted .app-viewport{padding-bottom:env(safe-area-inset-bottom)}
+}
+@media(max-width:520px){
+  .orientation-button{font-size:0;width:38px;padding:0}
+  .orientation-button::before{content:"↻";font-size:20px;line-height:1}
+}
