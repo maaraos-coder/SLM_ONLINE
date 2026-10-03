@@ -105,3 +105,36 @@ body.screen-inverted .orientation-button{background:var(--accent);border-color:v
   .orientation-button{font-size:0;width:38px;padding:0}
   .orientation-button::before{content:"↻";font-size:20px;line-height:1}
 }
+
+
+/* V16.1 · control de retorno siempre accesible */
+.restore-orientation{
+  display:none;
+  position:fixed;
+  right:max(14px,env(safe-area-inset-right));
+  bottom:max(18px,calc(env(safe-area-inset-bottom) + 12px));
+  z-index:9999;
+  min-height:48px;
+  border:1px solid #d6f23d;
+  border-radius:999px;
+  padding:10px 14px;
+  background:#d6f23d;
+  color:#071018;
+  font-weight:800;
+  box-shadow:0 8px 24px #0008;
+  align-items:center;
+  gap:7px;
+}
+body.screen-inverted .restore-orientation{
+  display:inline-flex;
+  transform:rotate(180deg);
+}
+@media(max-width:520px){
+  .restore-orientation{
+    min-width:52px;
+    min-height:52px;
+    padding:10px 13px;
+    font-size:18px;
+  }
+  .restore-orientation span{font-size:13px}
+}
